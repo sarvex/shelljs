@@ -1,6 +1,7 @@
 var common = require('./common');
 var which = require('./which');
 var child = require('child_process');
+var path = require('path');
 
 var DEFAULT_MAXBUFFER_SIZE = 20 * 1024 * 1024;
 var UNABLE_TO_SPAWN_ERROR_CODE = 127;
@@ -13,12 +14,22 @@ common.register('cmd', _cmd, {
 });
 
 function spawnHelper(command, commandArgs, spawnOptions) {
-  // TODO(nfischer): handle Node.js modules...
-  var inPath = which({}, command);
-  if (inPath) {
-    return child.spawnSync(command, commandArgs, spawnOptions);
-  }
-  throw new Error('Unable to find ' + command + ' in the $PATH');
+  // TODO(nfischer): handle Node.js modules properly... (binary names are not
+  // always the same as package names)
+  try {
+    var modulePath = path.resolve(require.resolve(command + '/package.json'),
+        '..');
+    var modulePackage = require(command + '/package.json');
+    var bin = modulePackage.bin;
+    if (typeof bin !== 'string') {
+      bin = bin[command];
+    }
+    var binary = path.resolve(modulePath, bin);
+    commandArgs.unshift(binary);
+    return child.spawnSync(common.config.execPath, commandArgs, spawnOptions);
+  } catch (e) { }
+  // Otherwise, assume it's in the $PATH
+  return child.spawnSync(command, commandArgs, spawnOptions);
 }
 
 function _cmd(options, command, commandArgs, userOptions) {
