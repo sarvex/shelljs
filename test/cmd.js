@@ -156,7 +156,7 @@ test('supports globbing by default', t => {
 
 test('globbing respects config.noglob', t => {
   shell.config.noglob = true;
-  const result = shell.cmd('echo', 'test/resources/*.txt');
+  const result = shell.cmd('shx', 'echo', 'test/resources/*.txt');
   t.falsy(shell.error());
   t.is(result.code, 0);
   t.is(result.stdout, 'test/resources/*.txt\n');

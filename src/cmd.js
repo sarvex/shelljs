@@ -1,4 +1,5 @@
 var common = require('./common');
+var which = require('./which');
 var child = require('child_process');
 
 var DEFAULT_MAXBUFFER_SIZE = 20 * 1024 * 1024;
@@ -10,6 +11,15 @@ common.register('cmd', _cmd, {
   canReceivePipe: true,
   wrapOutput: true,
 });
+
+function spawnHelper(command, commandArgs, spawnOptions) {
+  // TODO(nfischer): handle Node.js modules...
+  var inPath = which({}, command);
+  if (inPath) {
+    return child.spawnSync(command, commandArgs, spawnOptions);
+  }
+  throw new Error('Unable to find ' + command + ' in the $PATH');
+}
 
 function _cmd(options, command, commandArgs, userOptions) {
   // `options` will usually not have a value: it's added by our commandline flag
@@ -57,9 +67,8 @@ function _cmd(options, command, commandArgs, userOptions) {
   if (!command) {
     common.error('Must specify a non-empty string as a command');
   }
-  // console.warn(command, commandArgs);
 
-  var result = child.spawnSync(command, commandArgs, spawnOptions);
+  var result = spawnHelper(command, commandArgs, spawnOptions);
   var stdout;
   var stderr;
   var code;
