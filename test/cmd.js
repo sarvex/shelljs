@@ -27,20 +27,21 @@ test('no args', t => {
 test('unknown command', t => {
   const result = shell.cmd('asdfasdf'); // could not find command
   t.truthy(result.code > 0);
+  t.is(result.code, 127);
 });
 
 test('config.fatal and unknown command', t => {
   shell.config.fatal = true;
   t.throws(() => {
     shell.cmd('asdfasdf'); // could not find command
-  }, /Unable to spawn your process/);
+  }, /.*command not found.*/);
 });
 
 // TODO(nfischer): enable only if we implement realtime output + captured
 // output.
 test.skip('cmd exits gracefully if we cannot find the execPath', t => {
   shell.config.execPath = null;
-  shell.cmd('echo', 'foo');
+  shell.cmd('shx', 'echo', 'foo');
   t.regex(
     shell.error(),
     /Unable to find a path to the node binary\. Please manually set config\.execPath/
@@ -55,7 +56,6 @@ test.skip('cmd exits gracefully if we cannot find the execPath', t => {
 // sync
 //
 
-// TODO(nfischer): cannot execute shx on windows.
 test('check if stdout goes to output', t => {
   const result = shell.cmd('shx', 'echo', 'this is stdout');
   t.falsy(shell.error());
@@ -114,7 +114,7 @@ console.log('line2')
 
 test('does not expand shell-style variables', t => {
   shell.env.FOO = 'Hello world';
-  const result = shell.cmd('echo', '$FOO');
+  const result = shell.cmd('shx', 'echo', '$FOO');
   t.falsy(shell.error());
   t.is(result.code, 0);
   t.is(result.stdout, '$FOO\n');
@@ -122,11 +122,11 @@ test('does not expand shell-style variables', t => {
 
 test('does not expand windows-style variables', t => {
   shell.env.FOO = 'Hello world';
-  let result = shell.cmd('echo', '%FOO%');
+  let result = shell.cmd('shx', 'echo', '%FOO%');
   t.falsy(shell.error());
   t.is(result.code, 0);
   t.is(result.stdout, '%FOO%\n');
-  result = shell.cmd('echo', '!FOO!');
+  result = shell.cmd('shx', 'echo', '!FOO!');
   t.falsy(shell.error());
   t.is(result.code, 0);
   t.is(result.stdout, '!FOO!\n');
@@ -134,7 +134,7 @@ test('does not expand windows-style variables', t => {
 
 test('cannot inject multiple commands', t => {
   const injection = '; echo semicolon && echo and || echo or';
-  const result = shell.cmd('echo', `hi${injection}`);
+  const result = shell.cmd('shx', 'echo', `hi${injection}`);
   t.falsy(shell.error());
   t.is(result.code, 0);
   t.is(result.stdout, `hi${injection}\n`);
@@ -143,7 +143,7 @@ test('cannot inject multiple commands', t => {
 test('supports globbing by default', t => {
   // `echo` on windows will not glob, so it depends on shell.cmd() to expand the
   // glob before spawning the subprocess.
-  const result = shell.cmd('echo', 'test/resources/*.txt');
+  const result = shell.cmd('shx', 'echo', 'test/resources/*.txt');
   t.falsy(shell.error());
   t.is(result.code, 0);
   const expectedFiles = [
@@ -156,13 +156,12 @@ test('supports globbing by default', t => {
 
 test('globbing respects config.noglob', t => {
   shell.config.noglob = true;
-  const result = shell.cmd('echo', 'test/resources/*.txt');
+  const result = shell.cmd('shx', 'echo', 'test/resources/*.txt');
   t.falsy(shell.error());
   t.is(result.code, 0);
   t.is(result.stdout, 'test/resources/*.txt\n');
 });
 
-// TODO(nfischer): cannot execute shx on windows.
 test('set cwd', t => {
   const result = shell.cmd('shx', 'pwd', { cwd: '..' });
   t.falsy(shell.error());
@@ -171,11 +170,11 @@ test('set cwd', t => {
 });
 
 test('set maxBuffer (very small)', t => {
-  const result = shell.cmd('echo', '1234567890'); // default maxBuffer is ok
+  const result = shell.cmd('shx', 'echo', '1234567890'); // default maxBuffer is ok
   t.falsy(shell.error());
   t.is(result.code, 0);
   t.is(result.stdout, '1234567890\n');
-  shell.cmd('echo', '1234567890', { maxBuffer: 6 });
+  shell.cmd('shx', 'echo', '1234567890', { maxBuffer: 6 });
   t.truthy(shell.error());
 });
 
@@ -199,23 +198,11 @@ test('check process.env works', t => {
 });
 
 test('cmd returns a ShellString', t => {
-  const result = shell.cmd('echo', 'foo');
+  const result = shell.cmd('shx', 'echo', 'foo');
   t.is(typeof result, 'object');
   t.truthy(result instanceof String);
   t.is(typeof result.stdout, 'string');
   t.is(result.toString(), result.stdout);
-});
-
-test('encoding option works', t => {
-  const result = shell.cmd(shell.config.execPath, '-e', 'console.log(1234);', {
-    encoding: 'buffer',
-  });
-  t.falsy(shell.error());
-  t.is(result.code, 0);
-  t.truthy(Buffer.isBuffer(result.stdout));
-  t.truthy(Buffer.isBuffer(result.stderr));
-  t.is(result.stdout.toString(), '1234\n');
-  t.is(result.stderr.toString(), '');
 });
 
 //
@@ -266,18 +253,6 @@ test.cb.skip('command that fails', t => {
     t.is(code, 1);
     t.is(stdout, '');
     t.is(stderr, 'cp: missing <source> and/or <dest>\n');
-    t.end();
-  });
-});
-
-// TODO(nfischer): enable after we implement async.
-test.cb.skip('encoding option works with async', t => {
-  shell.cmd('shell.config.execPath', '-e', 'console.log(5566);', { async: true, encoding: 'buffer' }, (code, stdout, stderr) => {
-    t.is(code, 0);
-    t.truthy(Buffer.isBuffer(stdout));
-    t.truthy(Buffer.isBuffer(stderr));
-    t.is(stdout.toString(), '5566\n');
-    t.is(stderr.toString(), '');
     t.end();
   });
 });

@@ -1,8 +1,8 @@
 var common = require('./common');
-var child = require('child_process');
+var execa = require('execa');
 
 var DEFAULT_MAXBUFFER_SIZE = 20 * 1024 * 1024;
-var UNABLE_TO_SPAWN_ERROR_CODE = 127;
+var COMMAND_NOT_FOUND_ERROR_CODE = 127;
 
 common.register('cmd', _cmd, {
   cmdOptions: null,
@@ -11,6 +11,15 @@ common.register('cmd', _cmd, {
   wrapOutput: true,
 });
 
+function commandNotFound(execaResult) {
+  if (process.platform === 'win32') {
+    var str = 'is not recognized as an internal or external command';
+    return execaResult.code && execaResult.stderr.includes(str);
+  } else {
+    return execaResult.code &&
+      execaResult.stdout === null && execaResult.stderr === null;
+  }
+}
 function _cmd(options, command, commandArgs, userOptions) {
   // `options` will usually not have a value: it's added by our commandline flag
   // parsing engine.
@@ -37,6 +46,9 @@ function _cmd(options, command, commandArgs, userOptions) {
   // overridden by the user.
   var defaultOptions = {
     maxBuffer: DEFAULT_MAXBUFFER_SIZE,
+    // TODO(nfischer): consider following execa in this case...
+    stripEof: false,
+    reject: false,
   };
 
   // For other options, we forbid the user from overriding them (either for
@@ -46,38 +58,28 @@ function _cmd(options, command, commandArgs, userOptions) {
     shell: false,
   };
 
-  var spawnOptions =
+  var execaOptions =
     Object.assign(defaultOptions, userOptions, requiredOptions);
-
-  if (spawnOptions.encoding === 'buffer') {
-    // A workaround for node v5 and early versions of v4 and v6.
-    delete spawnOptions.encoding;
-  }
 
   if (!command) {
     common.error('Must specify a non-empty string as a command');
   }
   // console.warn(command, commandArgs);
 
-  var result = child.spawnSync(command, commandArgs, spawnOptions);
+  var result = execa.sync(command, commandArgs, execaOptions);
   var stdout;
   var stderr;
   var code;
-  if (result.error) {
+  if (commandNotFound(result)) {
     // This can happen if `command` is not an executable binary, the child
     // process timed out, etc.
     stdout = '';
-    stderr = 'Unable to spawn your process (received ' + result.error.errno + ')';
-    code = UNABLE_TO_SPAWN_ERROR_CODE;
+    stderr = "'" + command + "': command not found";
+    code = COMMAND_NOT_FOUND_ERROR_CODE;
   } else {
-    if (userOptions.encoding) {
-      stdout = result.stdout;
-      stderr = result.stderr;
-    } else { // default to string
-      stdout = result.stdout.toString();
-      stderr = result.stderr.toString();
-    }
-    code = result.status;
+    stdout = result.stdout.toString();
+    stderr = result.stderr.toString();
+    code = result.code;
   }
 
   // Pass `continue: true` so we can specify a value for stdout.
